@@ -1,0 +1,15 @@
+# zizmor configuration. See https://docs.zizmor.sh/configuration/
+rules:
+  unpinned-uses:
+    ignore:
+    # _example/.github/workflows/perf.yml is documentation rather than a
+    # workflow GitHub ever runs: it shows an adopting repository where to put
+    # the file and what to put in it. It references StevenACoffman/benchgate@v0
+    # as a readable placeholder, and no commit exists behind that tag yet, so
+    # there is nothing to hash-pin it to.
+    #
+    # The suppression lives here rather than in an inline `# zizmor: ignore`
+    # comment on purpose. A reader who copies that file into their own
+    # repository has to pin the action, and an inline comment would travel with
+    # the copy and silence the finding that tells them so. This one stays behind.
+    - perf.yml

@@ -74,6 +74,16 @@ docs:
     rumdl check README.md _example/README.md
     -vale README.md _example/README.md
 
+# --strict-collection is the flag that matters here. Without it, a workflow
+# zizmor cannot parse produces a WARN and is skipped, so a broken file reads as
+# a clean audit. A duplicate `name:` key once hid this repository's entire CI
+# workflow from the audit that way.
+#
+# Lint the workflows for validity (actionlint) and for safety (zizmor)
+actions:
+    actionlint
+    zizmor --strict-collection .
+
 # Run the govulncheck vulnerability scanner
 vulncheck:
     govulncheck ./...
@@ -89,5 +99,9 @@ example:
 example-gate base="HEAD~1": build
     ./bin/benchgate check --dir _example --base {{base}} --format text
 
+# `actions` is deliberately absent below. It currently reports findings in
+# publish.yaml and release.yml, and a recipe that is red on arrival teaches
+# people to stop running the whole thing. Add it once those are resolved.
+#
 # Every gate CI runs on a pull request
 check: tidy-check lint test vulncheck example

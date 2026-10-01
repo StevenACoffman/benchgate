@@ -5,6 +5,8 @@ golangci-lint = "2.13.2"
 goreleaser = "2.18.2"
 lefthook = "2.1.14"
 vale = "3.14.0"
+"ubi:zizmorcore/zizmor" = "1.30.1"
+"ubi:rhysd/actionlint" = "1.7.7"
 "go:golang.org/x/vuln/cmd/govulncheck" = "latest"
 # mutago publishes darwin-only release binaries, so it is built from source
 # here; that keeps the Linux CI runners working too.
