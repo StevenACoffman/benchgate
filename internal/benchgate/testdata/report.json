@@ -1,0 +1,116 @@
+{
+  "base": {
+    "ref": "origin/main",
+    "sha": "1111111111111111111111111111111111111111"
+  },
+  "head": {
+    "ref": "HEAD",
+    "sha": "2222222222222222222222222222222222222222"
+  },
+  "bench_command": "go test -run ^$ -bench . -benchmem -count 1 ./...",
+  "platform": "linux/amd64",
+  "cpu": "Test CPU",
+  "policy": {
+    "alpha": 0.05,
+    "tolerance_percent": 5,
+    "confidence": 0.95,
+    "min_coverage_percent": 80,
+    "fail_on_regression": true,
+    "fail_on_gap": false
+  },
+  "comparisons": [
+    {
+      "package": "example.com/m",
+      "name": "BenchmarkSlower-8",
+      "goos": "linux",
+      "goarch": "amd64",
+      "metric": "sec/op",
+      "unit": "ns/op",
+      "verdict": "regressed",
+      "base_center": 1.0000000000000001e-7,
+      "head_center": 1.3e-7,
+      "base_range_percent": 1.000000000000012,
+      "head_range_percent": 0.7692307692307665,
+      "delta_percent": 29.999999999999982,
+      "p": 0.00001082508822446903,
+      "alpha": 0.05,
+      "samples_base": 10,
+      "samples_head": 10,
+      "better": -1
+    },
+    {
+      "package": "example.com/m",
+      "name": "BenchmarkNew-8",
+      "goos": "linux",
+      "goarch": "amd64",
+      "metric": "sec/op",
+      "unit": "ns/op",
+      "verdict": "added",
+      "head_center": 1.0000000000000001e-7,
+      "head_range_percent": 1.000000000000012,
+      "alpha": 0.05,
+      "samples_base": 0,
+      "samples_head": 10,
+      "better": -1
+    },
+    {
+      "package": "example.com/m",
+      "name": "BenchmarkGone-8",
+      "goos": "linux",
+      "goarch": "amd64",
+      "metric": "sec/op",
+      "unit": "ns/op",
+      "verdict": "removed",
+      "base_center": 1.0000000000000001e-7,
+      "base_range_percent": 1.000000000000012,
+      "alpha": 0.05,
+      "samples_base": 10,
+      "samples_head": 0,
+      "better": -1
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "below-floor",
+      "detail": "benchmarks execute 45.5% of statements, below the 80.0% floor"
+    },
+    {
+      "kind": "no-benchmark",
+      "package": "example.com/m/nobench",
+      "detail": "package declares no Benchmark function"
+    },
+    {
+      "kind": "no-benchmark",
+      "package": "example.com/m/sub",
+      "detail": "package declares no Benchmark function"
+    },
+    {
+      "kind": "unreached",
+      "package": "example.com/m",
+      "function": "Cold",
+      "position": "example.com/m/a.go:5",
+      "detail": "no benchmark executes any statement in this function"
+    },
+    {
+      "kind": "unreached",
+      "package": "example.com/m",
+      "function": "Never",
+      "position": "example.com/m/a.go:7",
+      "detail": "no benchmark executes any statement in this function"
+    }
+  ],
+  "coverage": {
+    "total_percent": 45.5,
+    "functions": 4,
+    "unreached_functions": 2,
+    "floor_percent": 80,
+    "meets_floor": false
+  },
+  "counts": {
+    "added": 1,
+    "regressed": 1,
+    "removed": 1
+  },
+  "regressions": 1,
+  "exit_code": 2
+}

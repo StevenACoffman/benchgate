@@ -1,0 +1,22 @@
+benchmark gate: origin/main (111111111111) -> HEAD (222222222222)
+command:  go test -run ^$ -bench . -benchmem -count 1 ./...
+package:  example.com/m
+platform: linux/amd64
+cpu:      Test CPU
+policy:   alpha 0.05, tolerance 5%
+
+BENCHMARK          UNIT   BASE         HEAD         DELTA    P       N   VERDICT
+BenchmarkSlower-8  ns/op  100.0n ± 1%  130.0n ± 1%  +30.00%  <0.001  10  regressed
+BenchmarkNew-8     ns/op  -            100.0n ± 1%  -        -       10  added
+BenchmarkGone-8    ns/op  100.0n ± 1%  -            -        -       10  removed
+
+benchmark coverage gaps (5):
+  benchmarks execute 45.5% of statements, below the 80.0% floor
+  example.com/m/nobench: package declares no Benchmark function
+  example.com/m/sub: package declares no Benchmark function
+  example.com/m/a.go:5: Cold: no benchmark executes any statement in this function
+  example.com/m/a.go:7: Never: no benchmark executes any statement in this function
+
+benchmark statement coverage: 45.5%
+1 regressed, 0 improved, 0 unchanged, 0 unmeasurable, 1 added, 1 removed
+exit code: 2

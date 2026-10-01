@@ -1,0 +1,120 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+# Cancel superseded runs on the same ref; only the newest commit matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    - run: golangci-lint run --timeout=5m ./...
+  tidy:
+    name: go mod tidy is committed
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    - run: go mod tidy
+    - name: Fail if go.mod or go.sum changed
+      run: |
+        if ! git diff --exit-code go.mod go.sum; then
+          echo "::error::go.mod/go.sum are not tidy. Run 'go mod tidy' and commit the result."
+          exit 1
+        fi
+  test:
+    name: Unit tests (race)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The end-to-end suite builds throwaway repositories in t.TempDir(), but
+        # `git worktree add` still needs this checkout to be a real repository
+        # rather than a tarball export.
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    - name: Run the suite with the race detector
+      run: go test -race -count=1 ./...
+    - name: Coverage report
+      run: |
+        go test -race -coverprofile=coverage.out -covermode=atomic ./...
+        go tool cover -func=coverage.out | tail -1
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: always()
+      with:
+        name: coverage
+        path: coverage.out
+        retention-days: 7
+  example:
+    name: Example module builds, tests and lints
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    # _example is a nested module behind an underscore, so the root module's
+    # `./...` never reaches it. Without this job it would rot silently.
+    - run: just example
+  perf:
+    name: Performance gate (dogfood against _example)
+    runs-on: ubuntu-latest
+    # A regression here is advisory on benchgate's own pull requests: the point
+    # of the job is to prove the gate still runs end to end on a real runner,
+    # and a two-commit microbenchmark on a shared runner is not evidence worth
+    # blocking a merge over. An adopting repository sets --fail-on-regression.
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The gate resolves the base ref and adds a detached worktree at it, so
+        # it needs real history rather than a single-commit shallow clone.
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    - run: go build -o bin/benchgate .
+    - name: Gate _example against the base ref
+      env:
+        BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+      run: |
+        ./bin/benchgate check \
+          --dir _example \
+          --base "$BASE_REF" \
+          --rounds 4 \
+          --format markdown \
+          --summary-file "$GITHUB_STEP_SUMMARY"
+  vulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      with:
+        cache: true
+    - run: govulncheck ./...

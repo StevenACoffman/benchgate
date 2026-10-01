@@ -1,0 +1,191 @@
+name: benchgate
+description: >-
+  Gate a pull request on Go benchmark regressions and benchmark coverage gaps.
+  Measures a base revision and HEAD on the same runner, in one job, alternately.
+author: StevenACoffman
+
+branding:
+  icon: activity
+  color: purple
+
+inputs:
+  version:
+    description: >-
+      benchgate version to install, as a module version ("v0.3.1") or "latest".
+      Pin it: an unpinned gate changes its own verdicts when a new release
+      lands, and a build that starts failing for that reason is indistinguishable
+      from a real regression.
+    required: false
+    default: latest
+  dir:
+    description: Module directory to benchmark, relative to the repository root.
+    required: false
+    default: '.'
+  base:
+    description: >-
+      Git revision to compare HEAD against. On a pull request the right value is
+      the merge target, which is why the default resolves github.base_ref.
+    required: false
+    default: ''
+  packages:
+    description: Package pattern to benchmark.
+    required: false
+    default: './...'
+  bench:
+    description: -bench regexp selecting which benchmarks to run.
+    required: false
+    default: '.'
+  rounds:
+    description: >-
+      How many times to measure each revision. Fewer than 4 cannot produce a
+      significant result at the default alpha, whatever changed.
+    required: false
+    default: '6'
+  benchtime:
+    description: -benchtime value, e.g. 2s or 100x. Empty uses the go default of 1s.
+    required: false
+    default: ''
+  tolerance:
+    description: Percentage a significant difference must exceed to count as a regression.
+    required: false
+    default: '5'
+  alpha:
+    description: p-value below which a difference counts as statistically significant.
+    required: false
+    default: '0.05'
+  metrics:
+    description: >-
+      Space-separated units to gate on, e.g. "ns/op allocs/op". Empty gates on
+      every unit measured. Allocation counts barely move with runner load, so
+      "B/op allocs/op" is the useful starting point on a shared runner.
+    required: false
+    default: ''
+  fail-on-regression:
+    description: Fail the step when a regression is found.
+    required: false
+    default: 'false'
+  fail-on-gap:
+    description: Fail the step when a benchmark coverage gap is found.
+    required: false
+    default: 'false'
+  min-bench-coverage:
+    description: >-
+      Floor for the percentage of statements the benchmarks execute. 0 disables
+      the floor; see what your real number is before setting one.
+    required: false
+    default: '0'
+  require-benchmark-per-package:
+    description: Report every package that declares no Benchmark function.
+    required: false
+    default: 'false'
+  report-unreached:
+    description: Report every function no benchmark executes.
+    required: false
+    default: 'false'
+  job-summary:
+    description: Append the Markdown report to the job summary.
+    required: false
+    default: 'true'
+  json-output:
+    description: >-
+      Path to write the JSON report to, for a later step to consume. When set,
+      the log carries the JSON instead of the aligned table; the Markdown table
+      still reaches the job summary. Empty writes no file.
+    required: false
+    default: ''
+
+outputs:
+  exit-code:
+    description: >-
+      0 when every enabled gate passed, 2 for a regression, 3 for a coverage
+      gap. Always set, even when the step itself is configured not to fail, so a
+      later step can decide what to do about it.
+    value: ${{ steps.gate.outputs.exit-code }}
+  report-json:
+    description: >-
+      Path of the JSON report, when json-output was set. Read counts and
+      per-benchmark verdicts out of it with your own tooling; this action does
+      not parse JSON in bash, where getting it wrong is easier than getting it
+      right.
+    value: ${{ steps.gate.outputs.report-json }}
+
+runs:
+  using: composite
+  steps:
+  - name: Check out history for the base revision
+    shell: bash
+    run: |
+      # The gate adds a detached worktree at the base revision, so it needs real
+      # history. actions/checkout defaults to depth 1, which has none, and the
+      # resulting error is the commonest way this action is misconfigured.
+      if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+        echo "::notice::benchgate is deepening a shallow clone; set fetch-depth: 0 on actions/checkout to skip this"
+        git fetch --unshallow --quiet
+      fi
+
+  - name: Install benchgate
+    shell: bash
+    env:
+      BENCHGATE_VERSION: ${{ inputs.version }}
+    run: go install "github.com/StevenACoffman/benchgate@${BENCHGATE_VERSION}"
+
+  - name: Run the gate
+    id: gate
+    shell: bash
+    env:
+      # Every value reaches the binary as an environment variable rather than
+      # being interpolated into the run block: ${{ }} interpolation splices the
+      # text straight into the script, so a crafted branch name in base-ref
+      # would execute as shell. The BENCHGATE_ prefix is the flag's own env
+      # form, so no argument assembly is needed either.
+      BENCHGATE_DIR: ${{ inputs.dir }}
+      BENCHGATE_BASE: ${{ inputs.base != '' && inputs.base || (github.base_ref != '' && format('origin/{0}', github.base_ref) || 'HEAD~1') }}
+      BENCHGATE_PACKAGES: ${{ inputs.packages }}
+      BENCHGATE_BENCH: ${{ inputs.bench }}
+      BENCHGATE_ROUNDS: ${{ inputs.rounds }}
+      BENCHGATE_BENCHTIME: ${{ inputs.benchtime }}
+      BENCHGATE_TOLERANCE: ${{ inputs.tolerance }}
+      BENCHGATE_ALPHA: ${{ inputs.alpha }}
+      BENCHGATE_FAIL_ON_REGRESSION: ${{ inputs.fail-on-regression }}
+      BENCHGATE_FAIL_ON_GAP: ${{ inputs.fail-on-gap }}
+      BENCHGATE_MIN_BENCH_COVERAGE: ${{ inputs.min-bench-coverage }}
+      BENCHGATE_REQUIRE_BENCHMARK_PER_PACKAGE: ${{ inputs.require-benchmark-per-package }}
+      BENCHGATE_REPORT_UNREACHED: ${{ inputs.report-unreached }}
+      METRICS: ${{ inputs.metrics }}
+      JOB_SUMMARY: ${{ inputs.job-summary }}
+      JSON_OUTPUT: ${{ inputs.json-output }}
+    run: |
+      set -uo pipefail
+
+      args=()
+      # --metric is repeatable, which no single environment variable can express.
+      for metric in $METRICS; do
+        args+=("--metric" "$metric")
+      done
+      # The Markdown table reaches the job summary whatever the log format is:
+      # the log is read by whoever is debugging and the summary by whoever is
+      # reviewing, and they want different things.
+      if [ "$JOB_SUMMARY" = "true" ]; then
+        args+=("--summary-file" "$GITHUB_STEP_SUMMARY")
+      fi
+
+      # One measured run, however many destinations. Running the gate twice to
+      # get a second format would double the minutes it spends benchmarking,
+      # which is all of them.
+      if [ -n "$JSON_OUTPUT" ]; then
+        benchgate check --format json "${args[@]}" | tee "$JSON_OUTPUT"
+      else
+        benchgate check --format text "${args[@]}"
+      fi
+      # With pipefail set, $? after a pipeline is the last failing stage; the
+      # gate's own code is what matters, so read it positionally.
+      code=${PIPESTATUS[0]}
+
+      # The outputs are written before the step's own exit status is decided, so
+      # a later step can read them even when this one is configured to fail.
+      {
+        echo "exit-code=$code"
+        echo "report-json=$JSON_OUTPUT"
+      } >> "$GITHUB_OUTPUT"
+
+      exit "$code"

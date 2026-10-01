@@ -1,0 +1,81 @@
+default:
+    @just --list
+
+# Where the benchgate binary built from the parent module lands.
+benchgate := "../bin/benchgate"
+
+# Build benchgate from the parent module. Every recipe below needs it, and
+# building from source is how you get the version that matches this checkout.
+build:
+    cd .. && go build -o bin/benchgate .
+
+# Run the unit suite with the race detector
+test:
+    go test -race -count=1 ./...
+
+# Run golangci-lint over this module
+lint:
+    golangci-lint run ./...
+
+# Produce a benchmark result file by hand, the way `benchgate compare` wants it.
+# Useful for seeing what the gate reads, and for comparing two runs the tool
+# never measured itself.
+bench out="bench.txt":
+    go test -run='^$' -bench=. -benchmem -count=10 ./... | tee {{out}}
+
+# The CI gate, reported but not enforced. Start here: run it against your own
+# history, read what it says, and only then decide what should block.
+#
+# Gate HEAD against the previous commit
+check base="HEAD~1": build
+    {{benchgate}} check --dir . --base {{base}}
+
+# ns/op on a shared runner needs a loose tolerance to be useful; allocation
+# counts barely move with runner load, so they can be gated tightly. Gating on
+# allocs/op alone is the most reliable first gate a project can adopt.
+#
+# Block the build on an allocation regression
+check-allocs base="HEAD~1": build
+    {{benchgate}} check --dir . --base {{base}} \
+        --metric allocs/op --metric B/op \
+        --tolerance 0 --fail-on-regression
+
+# What the benchmarks fail to reach. internal/render has no benchmark at all and
+# tokenize.LongestToken has none either, so this reports two true findings
+# against this module rather than an empty list.
+gaps:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    just build
+    {{benchgate}} gaps --dir . --require-benchmark-per-package --report-unreached
+    # Exit 0 even with findings: this recipe is for reading, and --fail-on-gap is
+    # what turns the same findings into a gate.
+    exit 0
+
+# Compare two result files the gate never measured, e.g. one from another
+# machine. The p-value this produces describes a difference between two
+# environments, not between two revisions — which is why it is a separate
+# command and not a flag on `check`.
+compare base head: build
+    {{benchgate}} compare --fail-on-regression {{base}} {{head}}
+
+# Reproduce a real regression end to end: make Fields allocate per token,
+# measure it, and then put it back. This is the demonstration the README walks
+# through.
+demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! git diff --quiet -- tokenize/tokenize.go; then
+        echo "tokenize/tokenize.go has uncommitted changes; commit or stash them first" >&2
+        exit 1
+    fi
+    just build
+    trap 'git checkout -- tokenize/tokenize.go' EXIT
+    # Replace the presized allocation with append's growth: same answer, eight
+    # allocations instead of one.
+    perl -0pi -e 's/\tout := make\(\[\]string, 0, Count\(s\)\)/\tvar out []string/' tokenize/tokenize.go
+    echo "== measuring the working tree against HEAD =="
+    # --base HEAD compares the uncommitted change against the committed state,
+    # which is the shortest path to seeing the gate work.
+    {{benchgate}} check --dir . --base HEAD --rounds 6 \
+        --metric allocs/op --metric B/op --tolerance 0 --fail-on-regression || true

@@ -1,0 +1,28 @@
+# Mutation testing configuration.
+#
+# Mutation testing answers a question coverage cannot: not "was this line
+# executed?" but "would any test have noticed if it behaved differently?".
+# A surviving mutant is a line your tests run but do not actually check.
+#
+# Scope: internal/benchgate. That package is the pure core — parsing, the
+# statistical comparison, gap classification and rendering — and it is a
+# transformation of values with no I/O, so every mutant it contains is in
+# principle killable by a table-driven test. The shells (internal/gotest,
+# internal/gitwork, internal/gate) are deliberately out of scope: their
+# behaviour is proven by the subprocess and end-to-end suites, and scoring them
+# here would measure the wrong thing.
+exclude_dirs:
+- bin
+- _example
+ignore_source_lines:
+- "// Code generated"
+disable_mutators:
+# Replaces a context argument with nil. Contexts in this codebase are plumbing
+# rather than behaviour — no assertion distinguishes them, and adding assertions
+# that do would be testing the compiler rather than the domain. summary_rules §4
+# warns against exactly that kind of test.
+- expression/context-nil
+
+# Thresholds are NOT set here. `just mutate` carries the threshold, because the
+# right number depends on which files are in scope, and the recipe is where that
+# scope is chosen.

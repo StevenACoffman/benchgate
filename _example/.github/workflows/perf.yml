@@ -1,0 +1,70 @@
+# This is the file to copy into your own repository at
+# .github/workflows/perf.yml. It lives under _example/ here to show where it
+# belongs; GitHub only runs workflows from the repository root, so this copy is
+# documentation rather than a job.
+name: Performance
+on:
+  pull_request:
+  workflow_dispatch:
+
+# A benchmark run is minutes of CPU, and only the newest commit on a branch is
+# worth measuring.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchgate:
+    name: Benchmark gate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # The gate adds a detached git worktree at the base revision to measure
+        # it, so it needs real history. The default depth of 1 has none.
+        fetch-depth: 0
+        persist-credentials: false
+
+    - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    # Start here. Reported, not enforced: nothing fails, and the pull request
+    # gets a table in its job summary. Read a few weeks of those before deciding
+    # what should block, because a gate that starts red teaches people to ignore
+    # it rather than to fix it.
+    - name: Report benchmark deltas and coverage gaps
+      uses: StevenACoffman/benchgate@v0  # pin a release; see the note below
+      with:
+        rounds: 6
+        require-benchmark-per-package: true
+
+    # Then add this. Allocation counts are the right first gate on a shared
+    # runner: B/op and allocs/op barely move with runner load, so a change in
+    # them is a change in the code rather than in the weather, and a zero
+    # tolerance on them is not flaky. Wall time is not like that — gate it later,
+    # with a loose tolerance, once you have seen how noisy your runners are.
+    - name: Block an allocation regression
+      uses: StevenACoffman/benchgate@v0
+      with:
+        rounds: 6
+        metrics: B/op allocs/op
+        tolerance: '0'
+        fail-on-regression: true
+
+# Pinning
+# -------
+# `uses: StevenACoffman/benchgate@v0` is written for readability. Pin to a commit
+# SHA in a real repository: an unpinned gate can change its own verdicts when a
+# new release lands, and a build that starts failing for that reason is
+# indistinguishable from a real regression.
+#
+# Escape hatch
+# ------------
+# Put [skip benchgate] in a commit message to skip the gate for that commit. The
+# hatch has to exist and be documented, or the first time the gate is wrong about
+# something urgent, somebody deletes the whole job.

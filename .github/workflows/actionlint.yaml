@@ -1,0 +1,75 @@
+name: action-lint
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - .github/**
+  pull_request:
+    branches:
+    - main
+    paths:
+    - .github/**
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: Git Ref (Optional)
+        required: false
+
+# This job only reads the tree, so it runs on pull_request, not
+# pull_request_target. pull_request_target checks out the base branch, so it
+# would lint main's .github/** and never the change a PR proposes, which is the
+# opposite of what a linter is for. It also exposes a writable token and the
+# repository secrets to code from a fork. Linting needs neither: the read-only
+# GITHUB_TOKEN that fork and Dependabot pull requests receive is enough.
+env:
+  GOFLAGS: "-trimpath"
+  GOTOOLCHAIN: local
+# When a new revision is pushed to a PR, cancel all in-progress CI runs for that
+# PR. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  github-lint:
+    runs-on: ubuntu-latest
+    # runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    permissions:
+      contents: 'read'
+    steps:
+    - name: Clone Repository (Latest)
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      if: github.event.inputs.git-ref == ''
+      with:
+        persist-credentials: false
+    - name: Clone Repository (Custom Ref)
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      if: github.event.inputs.git-ref != ''
+      with:
+        ref: ${{ github.event.inputs.git-ref }}
+        persist-credentials: false
+    - name: Run actionlint
+      if: ${{ always() }}
+      uses: devops-actions/actionlint@ec02b36684b2f574f1d219ad0a43b082e46bf3e4 # v0.1.13
+      with: # https://www.shellcheck.net/wiki/SC2086 https://www.shellcheck.net/wiki/SC2129
+        shellcheck_opts: '-e SC2086 -e SC2129'
+    # actionlint checks that a workflow is valid; zizmor checks that it is safe
+    # — unpinned actions, template injection into run blocks, credentials left
+    # behind by checkout, cache poisoning on publishing jobs.
+    - name: Run zizmor
+      if: ${{ always() }}
+      uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+      with:
+        # Annotate the diff rather than upload SARIF. Code scanning needs
+        # security-events: write, which this read-only job does not have and a
+        # fork pull request could not use in any case.
+        advanced-security: false
+        annotations: true
+    - name: Lint Any Shell scripts
+      if: ${{ always() }}
+      uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+      env:
+        SHELLCHECK_OPTS: '-e SC2086 -e SC2129 -e SC2164 -e SC2155 -e SC2103'
+        #    - name: Run YAML Lint in PR
+        #      uses: reviewdog/action-yamllint@v1
