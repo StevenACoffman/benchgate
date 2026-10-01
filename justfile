@@ -57,13 +57,29 @@ tidy-check:
 # pure core, because the shells are proven by the subprocess and end-to-end
 # suites, which a mutation run does not execute.
 #
+# --config is passed explicitly rather than left to discovery. Whether mutago
+# finds a `.mutago.yaml` on its own was not something we could establish: it
+# runs happily on a deliberately corrupt config file under either spelling, so
+# a file it silently ignores is indistinguishable from one it honoured. Naming
+# the path here replaces that question with a check, because a wrong path is a
+# hard "Could not read config file" rather than a default-config run that looks
+# exactly like a configured one.
+#
+# The threshold is 85 against a measured 88.89%, which leaves room for a change
+# to add a line or two without turning the gate red on arrival. 100% is not
+# reachable: the tail is equivalent mutants, which alter the source without
+# altering behaviour and so cannot be killed by any test. `sign(0)` is one —
+# percentChange only calls it with a non-zero argument, so `f < 0` and `f <= 0`
+# are the same function. strconv.ParseFloat's bitSize is another: anything that
+# is not 32 behaves as 64.
+#
 # Mutation-test the pure core; fails below the threshold (exit code 4)
 mutate threshold="85":
-    mutago --min-msi={{threshold}} --quiet --no-diffs ./internal/benchgate/
+    mutago --config=.mutago.yaml --min-msi={{threshold}} --quiet --no-diffs ./internal/benchgate/
 
 # Mutation-test the pure core and show the diff for every surviving mutant
 mutate-report:
-    mutago --html-output ./internal/benchgate/
+    mutago --config=.mutago.yaml --html-output ./internal/benchgate/
     @echo "wrote mutago-report.html"
 
 # Format and lint the Markdown, then check the prose. vale is advisory here:
@@ -99,9 +115,5 @@ example:
 example-gate base="HEAD~1": build
     ./bin/benchgate check --dir _example --base {{base}} --format text
 
-# `actions` is deliberately absent below. It currently reports findings in
-# publish.yaml and release.yml, and a recipe that is red on arrival teaches
-# people to stop running the whole thing. Add it once those are resolved.
-#
 # Every gate CI runs on a pull request
-check: tidy-check lint test vulncheck example
+check: tidy-check lint test vulncheck actions example

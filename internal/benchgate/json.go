@@ -1,5 +1,7 @@
 package benchgate
 
+import "math"
+
 // The types in this file are the JSON contract. They are separate from the
 // domain types on purpose: a field rename in Comparison is a refactor, whereas a
 // field rename here breaks every consumer, and the two should not be the same
@@ -160,8 +162,15 @@ func newComparisonJSON(c *Comparison) comparisonJSON {
 		}
 	}
 	if c.hasBase() && c.hasHead() {
-		delta, p := c.DeltaPercent, c.P
-		out.DeltaPercent, out.P = &delta, &p
+		p := c.P
+		out.P = &p
+		// JSON has no representation for an infinity, and encoding one is an
+		// error rather than a quiet oddity. A move off a zero baseline
+		// therefore omits the field: the two center values are both present,
+		// so a consumer can see what happened without it.
+		if delta := c.DeltaPercent; !math.IsInf(delta, 0) {
+			out.DeltaPercent = &delta
+		}
 	}
 	return out
 }

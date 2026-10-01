@@ -1,0 +1,25 @@
+{
+  "base": {
+    "ref": "origin/main"
+  },
+  "head": {
+    "ref": "HEAD"
+  },
+  "policy": {
+    "alpha": 0.05,
+    "tolerance_percent": 5,
+    "confidence": 0.95,
+    "min_coverage_percent": 0,
+    "fail_on_regression": true,
+    "fail_on_gap": false
+  },
+  "comparisons": [],
+  "gaps": [],
+  "notices": [
+    "the base revision produced no benchmark results",
+    "HEAD produced no benchmark results"
+  ],
+  "counts": {},
+  "regressions": 0,
+  "exit_code": 0
+}

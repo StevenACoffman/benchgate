@@ -35,6 +35,14 @@ func (c *Comparison) DeltaString() string {
 	if !c.hasBase() || !c.hasHead() {
 		return absent
 	}
+	// A move off a zero baseline has no finite percentage. "+∞%" says what
+	// happened; "+Inf%", which is what %f would print, reads like a bug.
+	if math.IsInf(c.DeltaPercent, 1) {
+		return "+∞%"
+	}
+	if math.IsInf(c.DeltaPercent, -1) {
+		return "-∞%"
+	}
 	return fmt.Sprintf("%+.2f%%", c.DeltaPercent)
 }
 

@@ -1,0 +1,72 @@
+{
+  "base": {
+    "ref": "origin/main",
+    "sha": "3333333333333333333333333333333333333333"
+  },
+  "head": {
+    "ref": "HEAD",
+    "sha": "4444444444444444444444444444444444444444"
+  },
+  "platform": "linux/amd64",
+  "policy": {
+    "alpha": 0.05,
+    "tolerance_percent": 5,
+    "confidence": 0.95,
+    "min_coverage_percent": 0,
+    "fail_on_regression": false,
+    "fail_on_gap": false
+  },
+  "comparisons": [
+    {
+      "package": "example.com/m",
+      "name": "BenchmarkTiny-8",
+      "goos": "linux",
+      "goarch": "amd64",
+      "metric": "sec/op",
+      "unit": "ns/op",
+      "verdict": "unmeasurable",
+      "base_center": 1.0000000000000001e-7,
+      "head_center": 1.3e-7,
+      "delta_percent": 29.999999999999982,
+      "p": 0.10000000000000002,
+      "alpha": 0.05,
+      "samples_base": 3,
+      "samples_head": 3,
+      "better": -1,
+      "warnings": [
+        "need \u003e= 4 samples to detect a difference at alpha level 0.05",
+        "need \u003e= 6 samples for confidence interval at level 0.95"
+      ]
+    },
+    {
+      "package": "example.com/m",
+      "name": "BenchmarkNoisy-8",
+      "goos": "linux",
+      "goarch": "amd64",
+      "metric": "sec/op",
+      "unit": "ns/op",
+      "verdict": "unchanged",
+      "base_center": 2.65e-7,
+      "head_center": 2.775e-7,
+      "base_range_percent": 239.62264150943398,
+      "head_range_percent": 242.34234234234236,
+      "delta_percent": 4.7169811320754595,
+      "p": 0.7209013209013209,
+      "alpha": 0.05,
+      "samples_base": 8,
+      "samples_head": 8,
+      "better": -1,
+      "warnings": [
+        "the base measurement varied by ±240%, well over ±10%; raise --rounds or --benchtime before trusting this verdict",
+        "the head measurement varied by ±242%, well over ±10%; raise --rounds or --benchtime before trusting this verdict"
+      ]
+    }
+  ],
+  "gaps": [],
+  "counts": {
+    "unchanged": 1,
+    "unmeasurable": 1
+  },
+  "regressions": 0,
+  "exit_code": 0
+}

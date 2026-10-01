@@ -1,20 +1,14 @@
 name: benchgate
 description: >-
-  Gate a pull request on Go benchmark regressions and benchmark coverage gaps.
-  Measures a base revision and HEAD on the same runner, in one job, alternately.
+  Gate a pull request on Go benchmark regressions and benchmark coverage gaps. Measures a base revision and HEAD on the same runner, in one job, alternately.
 author: StevenACoffman
-
 branding:
   icon: activity
   color: purple
-
 inputs:
   version:
     description: >-
-      benchgate version to install, as a module version ("v0.3.1") or "latest".
-      Pin it: an unpinned gate changes its own verdicts when a new release
-      lands, and a build that starts failing for that reason is indistinguishable
-      from a real regression.
+      benchgate version to install, as a module version ("v0.3.1") or "latest". Pin it: an unpinned gate changes its own verdicts when a new release lands, and a build that starts failing for that reason is indistinguishable from a real regression.
     required: false
     default: latest
   dir:
@@ -23,8 +17,7 @@ inputs:
     default: '.'
   base:
     description: >-
-      Git revision to compare HEAD against. On a pull request the right value is
-      the merge target, which is why the default resolves github.base_ref.
+      Git revision to compare HEAD against. On a pull request the right value is the merge target, which is why the default resolves github.base_ref.
     required: false
     default: ''
   packages:
@@ -37,8 +30,7 @@ inputs:
     default: '.'
   rounds:
     description: >-
-      How many times to measure each revision. Fewer than 4 cannot produce a
-      significant result at the default alpha, whatever changed.
+      How many times to measure each revision. Fewer than 4 cannot produce a significant result at the default alpha, whatever changed.
     required: false
     default: '6'
   benchtime:
@@ -55,9 +47,7 @@ inputs:
     default: '0.05'
   metrics:
     description: >-
-      Space-separated units to gate on, e.g. "ns/op allocs/op". Empty gates on
-      every unit measured. Allocation counts barely move with runner load, so
-      "B/op allocs/op" is the useful starting point on a shared runner.
+      Space-separated units to gate on, e.g. "ns/op allocs/op". Empty gates on every unit measured. Allocation counts barely move with runner load, so "B/op allocs/op" is the useful starting point on a shared runner.
     required: false
     default: ''
   fail-on-regression:
@@ -70,8 +60,7 @@ inputs:
     default: 'false'
   min-bench-coverage:
     description: >-
-      Floor for the percentage of statements the benchmarks execute. 0 disables
-      the floor; see what your real number is before setting one.
+      Floor for the percentage of statements the benchmarks execute. 0 disables the floor; see what your real number is before setting one.
     required: false
     default: '0'
   require-benchmark-per-package:
@@ -88,27 +77,18 @@ inputs:
     default: 'true'
   json-output:
     description: >-
-      Path to write the JSON report to, for a later step to consume. When set,
-      the log carries the JSON instead of the aligned table; the Markdown table
-      still reaches the job summary. Empty writes no file.
+      Path to write the JSON report to, for a later step to consume. When set, the log carries the JSON instead of the aligned table; the Markdown table still reaches the job summary. Empty writes no file.
     required: false
     default: ''
-
 outputs:
   exit-code:
     description: >-
-      0 when every enabled gate passed, 2 for a regression, 3 for a coverage
-      gap. Always set, even when the step itself is configured not to fail, so a
-      later step can decide what to do about it.
+      0 when every enabled gate passed, 2 for a regression, 3 for a coverage gap. Always set, even when the step itself is configured not to fail, so a later step can decide what to do about it.
     value: ${{ steps.gate.outputs.exit-code }}
   report-json:
     description: >-
-      Path of the JSON report, when json-output was set. Read counts and
-      per-benchmark verdicts out of it with your own tooling; this action does
-      not parse JSON in bash, where getting it wrong is easier than getting it
-      right.
+      Path of the JSON report, when json-output was set. Read counts and per-benchmark verdicts out of it with your own tooling; this action does not parse JSON in bash, where getting it wrong is easier than getting it right.
     value: ${{ steps.gate.outputs.report-json }}
-
 runs:
   using: composite
   steps:
@@ -122,13 +102,11 @@ runs:
         echo "::notice::benchgate is deepening a shallow clone; set fetch-depth: 0 on actions/checkout to skip this"
         git fetch --unshallow --quiet
       fi
-
   - name: Install benchgate
     shell: bash
     env:
       BENCHGATE_VERSION: ${{ inputs.version }}
     run: go install "github.com/StevenACoffman/benchgate@${BENCHGATE_VERSION}"
-
   - name: Run the gate
     id: gate
     shell: bash

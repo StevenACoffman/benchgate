@@ -1,6 +1,10 @@
 package benchgate_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -372,4 +376,269 @@ func TestPolicyChecksCoverage(t *testing.T) {
 			equals(t, tc.want, p.ChecksCoverage())
 		})
 	}
+}
+
+// Going from no allocations to some is the regression an allocation gate most
+// needs to catch, and it is the one case where the percentage is undefined.
+// Reporting 0% there, as a naive divide-by-zero guard does, clears every
+// tolerance and lets the change through at --tolerance 0.
+func TestCompareCatchesAMoveOffAZeroBaseline(t *testing.T) {
+	t.Parallel()
+
+	rows := func(allocs float64) string {
+		var b strings.Builder
+		b.WriteString(benchHeader)
+		for range 8 {
+			fmt.Fprintf(&b, "BenchmarkAlloc-8\t100\t10.00 ns/op\t%.0f allocs/op\n", allocs)
+		}
+		return b.String()
+	}
+	none, some := testSeries(t, rows(0)), testSeries(t, rows(5))
+	p := testPolicy(t, benchgate.Significance{Tolerance: 0},
+		benchgate.Coverage{}, benchgate.Gates{Regression: true}, "allocs/op")
+
+	got, err := benchgate.Compare(none, some, p)
+	ok(t, err)
+	equals(t, 1, len(got))
+	equals(t, benchgate.VerdictRegressed, got[0].Verdict)
+	assert(t, math.IsInf(got[0].DeltaPercent, 1),
+		"a move off zero has no finite percentage")
+	equals(t, "+∞%", got[0].DeltaString())
+
+	report := benchgate.NewReport(p)
+	report.Comparisons = got
+	equals(t, benchgate.ExitRegression, report.ExitCode())
+
+	// The reverse is finite and is an improvement, not a second infinity.
+	back, err := benchgate.Compare(some, none, p)
+	ok(t, err)
+	equals(t, benchgate.VerdictImproved, back[0].Verdict)
+	equals(t, -100.0, back[0].DeltaPercent)
+	equals(t, "-100.00%", back[0].DeltaString())
+
+	// Zero to zero is genuinely no change rather than an undefined ratio.
+	flat, err := benchgate.Compare(none, none, p)
+	ok(t, err)
+	equals(t, 0.0, flat[0].DeltaPercent)
+	equals(t, benchgate.VerdictUnchanged, flat[0].Verdict)
+}
+
+// JSON cannot represent an infinity, and encoding one is an error rather than a
+// quiet oddity, so the renderer has to omit the field instead.
+func TestRenderJSONOmitsAnInfiniteDelta(t *testing.T) {
+	t.Parallel()
+
+	p := testPolicy(t, benchgate.Significance{}, benchgate.Coverage{}, benchgate.Gates{})
+	report := benchgate.NewReport(p)
+	report.Base = benchgate.Revision{Ref: "main"}
+	report.Head = benchgate.Revision{Ref: "HEAD"}
+	report.Comparisons = []benchgate.Comparison{{
+		Key: benchgate.Key{Name: "BenchmarkAlloc"}, Metric: "allocs/op", Unit: "allocs/op",
+		Verdict: benchgate.VerdictRegressed, DeltaPercent: math.Inf(1),
+		BaseCenter: 0, HeadCenter: 5, Better: -1,
+	}}
+
+	var buf bytes.Buffer
+	ok(t, benchgate.RenderJSON(&buf, &report))
+
+	var decoded struct {
+		Comparisons []map[string]any `json:"comparisons"`
+	}
+	ok(t, json.Unmarshal(buf.Bytes(), &decoded))
+	equals(t, 1, len(decoded.Comparisons))
+	_, present := decoded.Comparisons[0]["delta_percent"]
+	equals(t, false, present)
+	equals(t, 5.0, decoded.Comparisons[0]["head_center"])
+}
+
+// sameValues decides whether a comparison is certainly unchanged or merely
+// untestable, so each way of differing has to be distinguishable.
+func TestCompareIdenticalSamplesVersusConstantDifference(t *testing.T) {
+	t.Parallel()
+
+	rows := func(values ...float64) string {
+		var b strings.Builder
+		b.WriteString(benchHeader)
+		for _, v := range values {
+			fmt.Fprintf(&b, "BenchmarkX-8\t100\t10.00 ns/op\t%.0f allocs/op\n", v)
+		}
+		return b.String()
+	}
+	const n = 8
+	constant := func(v float64) []float64 {
+		out := make([]float64, n)
+		for i := range out {
+			out[i] = v
+		}
+		return out
+	}
+	varying := append(constant(1)[:n-1], 2)
+
+	cases := map[string]struct {
+		base, head []float64
+		want       benchgate.Verdict
+		wantWarn   bool
+	}{
+		"both constant and equal": {
+			base: constant(1),
+			head: constant(1),
+			want: benchgate.VerdictUnchanged,
+		},
+		"both constant but different": {
+			base: constant(1),
+			head: constant(8),
+			want: benchgate.VerdictRegressed,
+		},
+		"base varies, head constant": {
+			base:     varying,
+			head:     constant(1),
+			want:     benchgate.VerdictUnchanged,
+			wantWarn: true,
+		},
+		"base constant, head varies": {
+			base:     constant(1),
+			head:     varying,
+			want:     benchgate.VerdictUnchanged,
+			wantWarn: true,
+		},
+		"constant head below constant": {
+			base: constant(8),
+			head: constant(1),
+			want: benchgate.VerdictImproved,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			p := testPolicy(t, benchgate.Significance{Tolerance: 0},
+				benchgate.Coverage{}, benchgate.Gates{}, "allocs/op")
+			got, err := benchgate.Compare(
+				testSeries(t, rows(tc.base...)), testSeries(t, rows(tc.head...)), p)
+			ok(t, err)
+			equals(t, 1, len(got))
+			equals(t, tc.want, got[0].Verdict)
+			// Identical samples are certainly unchanged, so the statistics'
+			// "cannot test this" warnings must not be reported as doubt.
+			if !tc.wantWarn {
+				equals(t, 0, len(got[0].Warnings))
+			}
+		})
+	}
+}
+
+// The base and head summaries warn independently and word the common case
+// identically, so the same sentence must not appear twice on one row.
+func TestCompareDeduplicatesWarnings(t *testing.T) {
+	t.Parallel()
+
+	three := []float64{100, 101, 99}
+	p := testPolicy(t, benchgate.Significance{}, benchgate.Coverage{}, benchgate.Gates{})
+	got, err := benchgate.Compare(
+		testSeries(t, benchOutput("BenchmarkX", three...)),
+		testSeries(t, benchOutput("BenchmarkX", three...)), p)
+	ok(t, err)
+	equals(t, 1, len(got))
+
+	seen := make(map[string]int, len(got[0].Warnings))
+	for _, w := range got[0].Warnings {
+		seen[w]++
+	}
+	for msg, count := range seen {
+		equals(t, 1, count)
+		assert(t, msg != "", "a warning should carry a message")
+	}
+	assert(t, len(got[0].Warnings) > 0, "three samples should warn about sample size")
+}
+
+// An unstable measurement produces a confident verdict from data that cannot
+// support one, which is the failure mode a performance gate is most often
+// wrong about.
+func TestCompareWarnsAboutUnstableMeasurements(t *testing.T) {
+	t.Parallel()
+
+	p := testPolicy(t, benchgate.Significance{}, benchgate.Coverage{}, benchgate.Gates{})
+
+	steady := []float64{100, 100, 101, 100, 99, 100, 100, 101}
+	wild := []float64{10, 500, 20, 900, 15, 700, 30, 1100}
+
+	stable, err := benchgate.Compare(
+		testSeries(t, benchOutput("BenchmarkX", steady...)),
+		testSeries(t, benchOutput("BenchmarkX", steady...)), p)
+	ok(t, err)
+	for _, w := range stable[0].Warnings {
+		assert(t, !strings.Contains(w, "varied by"),
+			"a steady measurement should not be called unstable: "+w)
+	}
+
+	noisy, err := benchgate.Compare(
+		testSeries(t, benchOutput("BenchmarkX", wild...)),
+		testSeries(t, benchOutput("BenchmarkX", wild...)), p)
+	ok(t, err)
+	var mentions int
+	for _, w := range noisy[0].Warnings {
+		if strings.Contains(w, "varied by") {
+			mentions++
+			assert(t, strings.Contains(w, "--rounds"), "the warning should name the fix: "+w)
+		}
+	}
+	// One per side: the base and the head are each unstable here.
+	equals(t, 2, mentions)
+}
+
+// One empty side is not an error. The caller decides whether "nothing ran"
+// matters, and every benchmark then reports as added or removed.
+func TestCompareWithOneEmptySide(t *testing.T) {
+	t.Parallel()
+
+	p := testPolicy(t, benchgate.Significance{}, benchgate.Coverage{}, benchgate.Gates{})
+	populated := testSeries(t, benchOutput("BenchmarkX", 100, 101, 99))
+	empty := testSeries(t, "")
+
+	added, err := benchgate.Compare(empty, populated, p)
+	ok(t, err)
+	equals(t, 1, len(added))
+	equals(t, benchgate.VerdictAdded, added[0].Verdict)
+
+	removed, err := benchgate.Compare(populated, empty, p)
+	ok(t, err)
+	equals(t, 1, len(removed))
+	equals(t, benchgate.VerdictRemoved, removed[0].Verdict)
+}
+
+// A custom unit may carry negative values, and a move off a zero baseline then
+// has to run to minus infinity rather than plus. Getting the sign wrong would
+// turn a regression into an improvement.
+func TestCompareSignsAnInfiniteDeltaByDirection(t *testing.T) {
+	t.Parallel()
+
+	rows := func(v float64) string {
+		var b strings.Builder
+		b.WriteString(benchHeader)
+		b.WriteString("Unit widgets/op better=higher\n")
+		for range 8 {
+			fmt.Fprintf(&b, "BenchmarkX-8\t100\t%.2f widgets/op\n", v)
+		}
+		return b.String()
+	}
+	p := testPolicy(t, benchgate.Significance{Tolerance: 0},
+		benchgate.Coverage{}, benchgate.Gates{}, "widgets/op")
+
+	// More widgets is better, so zero to a negative count is a regression that
+	// runs to minus infinity.
+	down, err := benchgate.Compare(testSeries(t, rows(0)), testSeries(t, rows(-5)), p)
+	ok(t, err)
+	equals(t, 1, len(down))
+	assert(t, math.IsInf(down[0].DeltaPercent, -1),
+		"zero to a negative value is minus infinity, got "+down[0].DeltaString())
+	equals(t, "-∞%", down[0].DeltaString())
+	equals(t, benchgate.VerdictRegressed, down[0].Verdict)
+
+	// And the mirror: zero to a positive count is plus infinity, an improvement
+	// for this unit.
+	up, err := benchgate.Compare(testSeries(t, rows(0)), testSeries(t, rows(5)), p)
+	ok(t, err)
+	assert(t, math.IsInf(up[0].DeltaPercent, 1), "zero to a positive value is plus infinity")
+	equals(t, "+∞%", up[0].DeltaString())
+	equals(t, benchgate.VerdictImproved, up[0].Verdict)
 }

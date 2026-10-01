@@ -6,7 +6,7 @@ It is a nested module behind an underscore, so the parent module's `./...` never
 walks into it. Everything here runs on its own, and nothing here imports
 benchgate. benchgate is a command you run *against* a module, not a library you
 build into one, so the example usage lives in the `justfile` and in
-`.github/workflows/perf.yml` rather than in an import.
+`.github/workflows/perf.yaml` rather than in an import.
 
 ## What is here, and why each piece exists
 
@@ -17,7 +17,7 @@ build into one, so the example usage lives in the `justfile` and in
 | `tokenize.LongestToken`      | A function with **no benchmark**, so `benchgate gaps` has a true `unreached` finding to report.                                       |
 | `internal/render/`           | A package with tests but **no benchmarks at all**, which is what `--require-benchmark-per-package` reports.                           |
 | `justfile`                   | Every way you would invoke the gate locally.                                                                                          |
-| `.github/workflows/perf.yml` | The workflow to copy into your own repository root.                                                                                   |
+| `.github/workflows/perf.yaml` | The workflow to copy into your own repository root.                                                                                   |
 
 Those gaps are not oversights. A tool that reports an empty list against its own
 example teaches you nothing about what a real finding looks like.
@@ -118,7 +118,7 @@ instead of a flag on `check`. You have to ask for it on purpose.
 
 ## Wiring it into your own repository
 
-Copy `.github/workflows/perf.yml` to your repository root. Watch for these.
+Copy `.github/workflows/perf.yaml` to your repository root. Watch for these.
 
 - **`fetch-depth: 0` on `actions/checkout`.** The gate adds a detached git
   worktree at the base revision to measure it, and the default checkout depth of

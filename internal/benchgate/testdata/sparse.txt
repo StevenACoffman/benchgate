@@ -1,0 +1,9 @@
+benchmark gate: origin/main -> HEAD
+policy:   alpha 0.05, tolerance 5%
+notice:   the base revision produced no benchmark results
+notice:   HEAD produced no benchmark results
+
+no benchmarks compared
+
+0 regressed, 0 improved, 0 unchanged, 0 unmeasurable, 0 added, 0 removed
+exit code: 0

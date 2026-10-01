@@ -6,7 +6,7 @@
 // benchmark coverage gaps, and rendering a report. Every function here is a
 // transformation of values, so none of it touches the filesystem, a
 // subprocess, the clock or the network. Supplying those is the shell's job
-// (summary_rules §5); the depguard rules in .golangci.yml enforce it.
+// (summary_rules §5); the depguard rules in .golangci.yaml enforce it.
 //
 // Note on layout: every file in this package declares its constants before its
 // types, because the house declaration order is const, var, type, func. Go

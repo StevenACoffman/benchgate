@@ -2,6 +2,7 @@ package benchgate
 
 import (
 	"fmt"
+	"math"
 	"slices"
 
 	"golang.org/x/perf/benchmath"
@@ -287,14 +288,35 @@ func (s Series) oneSided(k Key, v Verdict, p Policy) []Comparison {
 	return out
 }
 
-// percentChange returns the change from old to new as a percentage, or 0 when
-// the baseline is zero and the ratio is undefined. A zero baseline is real —
-// "0 allocs/op" is the goal for many benchmarks — so it is not an error.
+// percentChange returns the change from old to new as a percentage.
+//
+// A zero baseline is real rather than exceptional: "0 allocs/op" is the goal
+// for many benchmarks, and it is also the case where the ratio is undefined.
+// Reporting 0% there would be the worst possible answer, because going from no
+// allocations to some is the regression an allocation gate most needs to
+// catch, and 0% clears every tolerance. So a move off a zero baseline returns
+// an infinity, which exceeds any tolerance and carries the right sign. Zero to
+// zero is genuinely no change.
+//
+// Callers must cope with a non-finite result: DeltaString renders it as ∞, and
+// the JSON encoding omits the field, since JSON cannot represent an infinity.
 func percentChange(old, updated float64) float64 {
-	if old == 0 {
+	switch old {
+	case updated:
 		return 0
+	case 0:
+		return math.Inf(sign(updated))
+	default:
+		return (updated/old - 1) * 100
 	}
-	return (updated/old - 1) * 100
+}
+
+// sign returns +1 for a positive number and -1 for a negative one.
+func sign(f float64) int {
+	if f < 0 {
+		return -1
+	}
+	return 1
 }
 
 // warningStrings flattens several groups of warnings into messages, dropping

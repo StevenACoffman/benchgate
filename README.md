@@ -43,7 +43,7 @@ itself built on.
 - uses: actions/setup-go@v5
   with:
     go-version-file: go.mod
-- uses: StevenACoffman/benchgate@v0
+- uses: StevenACoffman/benchgate@b8a28f565324bc2e1d443ab90042630bfd9fd449 # v0.1.0
   with:
     metrics: B/op allocs/op
     tolerance: '0'
@@ -118,6 +118,13 @@ way to measure a change you have not committed yet.
 out wider than ±10% of its own center, the comparison gets a warning that names
 the fix. Statistics applied correctly to measurements that were never stable
 enough to carry them is how a gate produces confident nonsense.
+
+**A move off a zero baseline runs to infinity.** Going from no
+allocations to some is the thing an allocation gate most needs to catch, and it
+is also the one case where the percentage is undefined. A naive divide-by-zero
+guard reports 0%, which clears every tolerance and waves the change through.
+benchgate reports it as `+∞%`, which exceeds any tolerance and carries the right
+sign. Going the other way, to zero, stays an ordinary finite -100%.
 
 **"Not enough samples" is not "no regression".** When the sample is too small
 for the requested alpha, the verdict reads `unmeasurable` and the gate does not
