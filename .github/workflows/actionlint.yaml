@@ -15,7 +15,6 @@ on:
       git-ref:
         description: Git Ref (Optional)
         required: false
-
 # This job only reads the tree, so it runs on pull_request, not
 # pull_request_target. pull_request_target checks out the base branch, so it
 # would lint main's .github/** and never the change a PR proposes, which is the

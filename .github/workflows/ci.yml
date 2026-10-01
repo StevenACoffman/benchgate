@@ -3,13 +3,18 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: ["main"]
   workflow_dispatch:
 # Cancel superseded runs on the same ref; only the newest commit matters.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+env:
+  GOFLAGS: "-trimpath"
+  GOLANGCI_LINT_VERSION: "latest"
 permissions:
   contents: read
+name: Test
 jobs:
   lint:
     name: Lint
